@@ -1,49 +1,156 @@
 name: Codal Boursme
 
 on:
+  schedule:
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  test-codal:
+  codal:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
 
-      - name: Test Codal360
+      - name: Read and filter Codal360
         run: |
           python - <<'PY'
+          import os
+          import re
+          import json
           import requests
           from bs4 import BeautifulSoup
 
-          url = "https://t.me/s/Codal360_ir"
+          URL = "https://t.me/s/Codal360_ir"
+          STATE = "codal_state.json"
 
           headers = {
               "User-Agent": "Mozilla/5.0"
           }
 
-          r = requests.get(url, headers=headers, timeout=30)
-
-          print("STATUS:", r.status_code)
-          print("LENGTH:", len(r.text))
-
+          r = requests.get(URL, headers=headers, timeout=30)
           r.raise_for_status()
 
           soup = BeautifulSoup(r.text, "html.parser")
-          messages = soup.select(".tgme_widget_message")
 
-          print("MESSAGES FOUND:", len(messages))
+          posts = []
 
-          for message in messages[-5:]:
-              text = message.select_one(".tgme_widget_message_text")
+          for msg in soup.select(".tgme_widget_message"):
+              post = msg.get("data-post", "")
 
-              if text:
-                  print("=" * 60)
-                  print(text.get_text(" ", strip=True)[:1000])
+              if "/" not in post:
+                  continue
 
-          print("=" * 60)
-          print("CODAL360 CONNECTION: OK")
+              try:
+                  post_id = int(post.rsplit("/", 1)[1])
+              except:
+                  continue
+
+              text_el = msg.select_one(".tgme_widget_message_text")
+
+              if not text_el:
+                  continue
+
+              text = text_el.get_text("\n", strip=True)
+
+              posts.append({
+                  "id": post_id,
+                  "text": text,
+                  "url": f"https://t.me/Codal360_ir/{post_id}"
+              })
+
+          posts.sort(key=lambda x: x["id"])
+
+          # دسته‌بندی‌های موردنظر
+          patterns = {
+              "گزارش ماهانه": [
+                  r"گزارش.*فعالیت.*ماهانه",
+                  r"فعالیت.*ماهانه"
+              ],
+
+              "صورت مالی": [
+                  r"صورت.?ها[یي].?مالی",
+                  r"صورت.?مالی"
+              ],
+
+              "افزایش سرمایه": [
+                  r"افزایش.?سرمایه",
+                  r"پیشنهاد.*افزایش.?سرمایه",
+                  r"گزارش.*توجیهی.*افزایش"
+              ],
+
+              "افشای بااهمیت": [
+                  r"افشای.?اطلاعات.?بااهمیت",
+                  r"اطلاعات.?بااهمیت"
+              ],
+
+              "شفاف‌سازی": [
+                  r"شفاف.?سازی"
+              ],
+
+              "مجامع": [
+                  r"مجمع عمومی",
+                  r"تصمیمات مجمع",
+                  r"آگهی دعوت.*مجمع"
+              ]
+          }
+
+          def classify(text):
+              result = []
+
+              for category, regexes in patterns.items():
+                  for pattern in regexes:
+                      if re.search(pattern, text, re.I):
+                          result.append(category)
+                          break
+
+              return result
+
+          important = []
+
+          for p in posts:
+              categories = classify(p["text"])
+
+              if categories:
+                  p["categories"] = categories
+                  important.append(p)
+
+          # نمایش آخرین موارد برای تست
+          print("=" * 70)
+          print("TOTAL POSTS:", len(posts))
+          print("IMPORTANT POSTS:", len(important))
+          print("=" * 70)
+
+          for p in important[-15:]:
+              print()
+              print("ID:", p["id"])
+              print("CATEGORY:", ", ".join(p["categories"]))
+              print("URL:", p["url"])
+              print("TEXT:")
+              print(p["text"][:1500])
+              print("-" * 70)
+
+          # ذخیره آخرین شناسه
+          last_id = posts[-1]["id"] if posts else 0
+
+          with open(STATE, "w", encoding="utf-8") as f:
+              json.dump(
+                  {"last_id": last_id},
+                  f,
+                  ensure_ascii=False,
+                  indent=2
+              )
+
+          print()
+          print("LAST POST ID:", last_id)
+          print("FILTER TEST: OK")
           PY
