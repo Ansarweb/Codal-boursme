@@ -37,7 +37,7 @@ jobs:
           import requests
           from bs4 import BeautifulSoup
 
-          SOURCE = "https://t.me/s/Codal360_ir"
+          SOURCE = "https://t.me/s/codal"
           STATE_FILE = "codal_state.json"
 
           # -----------------------------
