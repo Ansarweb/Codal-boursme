@@ -1,4 +1,4 @@
-name: Codal Attachment Test
+name: Codal Direct API Test
 
 on:
   workflow_dispatch:
@@ -8,265 +8,132 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests beautifulsoup4
+          pip install requests
 
-      - name: Inspect Codal post
+      - name: Find Codal report
         run: |
           python - <<'PY'
 
           import requests
-          from bs4 import BeautifulSoup
+          import urllib.parse
+          import json
 
-          # ==========================================
-          # پست واقعی کدال برای تست
-          # ==========================================
+          SYMBOL = "وفردانامه"
 
-          POST_ID = 463194
-
-          POST_URL = f"https://t.me/codal/{POST_ID}"
+          API = (
+              "https://search.codal.ir/api/search/v2/q?"
+              + urllib.parse.urlencode({
+                  "Symbol": SYMBOL,
+                  "PageNumber": 1,
+                  "Length": 20
+              })
+          )
 
           print("=" * 70)
-          print("CODAL ATTACHMENT TEST")
+          print("CODAL DIRECT API TEST")
           print("=" * 70)
 
-          print("POST ID:", POST_ID)
-          print("POST URL:", POST_URL)
-
-          # ==========================================
-          # دریافت صفحه
-          # ==========================================
-
-          headers = {
-              "User-Agent": (
-                  "Mozilla/5.0 "
-                  "(Linux; Android 10) "
-                  "AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) "
-                  "Chrome/120 Safari/537.36"
-              )
-          }
+          print("SYMBOL:", SYMBOL)
+          print("API:", API)
 
           response = requests.get(
-              POST_URL,
-              headers=headers,
-              timeout=40,
-              allow_redirects=True
+              API,
+              headers={
+                  "User-Agent": "Mozilla/5.0",
+                  "Accept": "application/json"
+              },
+              timeout=40
           )
 
           print()
-          print("HTTP STATUS:", response.status_code)
-          print("FINAL URL:", response.url)
+          print("HTTP:", response.status_code)
 
           response.raise_for_status()
 
-          # ==========================================
-          # Parse HTML
-          # ==========================================
+          data = response.json()
 
-          soup = BeautifulSoup(
-              response.text,
-              "html.parser"
-          )
-
-          # ==========================================
-          # متن پست
-          # ==========================================
-
-          text_element = soup.select_one(
-              ".tgme_widget_message_text"
-          )
-
-          print()
-          print("=" * 70)
-          print("POST TEXT")
-          print("=" * 70)
-
-          if text_element:
-
-              print(
-                  text_element.get_text(
-                      "\n",
-                      strip=True
-                  )
-              )
-
-          else:
-
-              print(
-                  "POST TEXT NOT FOUND"
-              )
-
-          # ==========================================
-          # تمام لینک‌ها
-          # ==========================================
-
-          print()
-          print("=" * 70)
-          print("ALL LINKS")
-          print("=" * 70)
-
-          links = soup.select(
-              "a[href]"
+          letters = data.get(
+              "Letters",
+              []
           )
 
           print(
-              "TOTAL LINKS:",
-              len(links)
+              "RESULTS:",
+              len(letters)
           )
 
-          for index, link in enumerate(
-              links,
-              start=1
-          ):
+          print()
 
-              href = link.get(
-                  "href",
-                  ""
-              )
+          for letter in letters:
 
-              text = link.get_text(
-                  " ",
-                  strip=True
-              )
+              print("=" * 70)
 
-              print()
               print(
-                  f"[{index}]"
+                  "TRACING NO:",
+                  letter.get("TracingNo")
               )
 
               print(
-                  "TEXT:",
-                  repr(text)
+                  "SYMBOL:",
+                  letter.get("Symbol")
               )
 
               print(
-                  "HREF:",
-                  href
+                  "TITLE:",
+                  letter.get("Title")
               )
 
-          # ==========================================
-          # جستجوی لینک‌های احتمالی فایل
-          # ==========================================
+              print(
+                  "DATE:",
+                  letter.get("SentDateTime")
+              )
+
+              print(
+                  "HAS EXCEL:",
+                  letter.get("HasExcel")
+              )
+
+              print(
+                  "HAS PDF:",
+                  letter.get("HasPdf")
+              )
+
+              print(
+                  "HAS ATTACHMENT:",
+                  letter.get("HasAttachment")
+              )
+
+              print(
+                  "LETTER SERIAL:",
+                  letter.get("LetterSerial")
+              )
+
+              print(
+                  "URL:",
+                  letter.get("Url")
+              )
+
+              print(
+                  "PDF URL:",
+                  letter.get("PdfUrl")
+              )
+
+              print(
+                  "EXCEL URL:",
+                  letter.get("ExcelUrl")
+              )
+
+              print(
+                  "ATTACHMENT URL:",
+                  letter.get("AttachmentUrl")
+              )
 
           print()
           print("=" * 70)
-          print("POSSIBLE ATTACHMENT LINKS")
-          print("=" * 70)
-
-          found = []
-
-          for link in links:
-
-              href = link.get(
-                  "href",
-                  ""
-              )
-
-              href_lower = href.lower()
-
-              if any(
-                  item in href_lower
-                  for item in [
-                      ".pdf",
-                      ".xls",
-                      ".xlsx",
-                      ".zip",
-                      "attachment",
-                      "download",
-                      "codal"
-                  ]
-              ):
-
-                  if href not in found:
-
-                      found.append(
-                          href
-                      )
-
-          if found:
-
-              for item in found:
-
-                  print(
-                      "POSSIBLE FILE:",
-                      item
-                  )
-
-          else:
-
-              print(
-                  "NO DIRECT ATTACHMENT LINK FOUND"
-              )
-
-          # ==========================================
-          # بررسی عناصر iframe
-          # ==========================================
-
-          print()
-          print("=" * 70)
-          print("IFRAMES")
-          print("=" * 70)
-
-          iframes = soup.select(
-              "iframe"
-          )
-
-          print(
-              "IFRAMES:",
-              len(iframes)
-          )
-
-          for iframe in iframes:
-
-              print(
-                  iframe.get(
-                      "src",
-                      ""
-                  )
-              )
-
-          # ==========================================
-          # بررسی تصاویر
-          # ==========================================
-
-          print()
-          print("=" * 70)
-          print("IMAGES")
-          print("=" * 70)
-
-          images = soup.select(
-              "img[src]"
-          )
-
-          print(
-              "IMAGES:",
-              len(images)
-          )
-
-          for image in images:
-
-              src = image.get(
-                  "src",
-                  ""
-              )
-
-              if src:
-
-                  print(
-                      src
-                  )
-
-          # ==========================================
-          # پایان
-          # ==========================================
-
-          print()
-          print("=" * 70)
-          print("ATTACHMENT INSPECTION: OK")
+          print("CODAL API TEST: OK")
           print("=" * 70)
 
           PY
