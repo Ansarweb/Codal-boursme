@@ -1,0 +1,107 @@
+name: Codal Attachment Test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Install
+        run: |
+          pip install requests beautifulsoup4
+
+      - name: Test Codal Attachments
+        run: |
+          python - <<'PY'
+
+          import requests
+          from bs4 import BeautifulSoup
+
+          url = "https://t.me/s/codal"
+
+          r = requests.get(
+              url,
+              headers={
+                  "User-Agent": "Mozilla/5.0"
+              },
+              timeout=40
+          )
+
+          r.raise_for_status()
+
+          soup = BeautifulSoup(
+              r.text,
+              "html.parser"
+          )
+
+          messages = soup.select(
+              ".tgme_widget_message"
+          )
+
+          print("POSTS:", len(messages))
+
+          for message in messages[-10:]:
+
+              data_post = message.get(
+                  "data-post",
+                  ""
+              )
+
+              if "/" not in data_post:
+                  continue
+
+              post_id = data_post.rsplit(
+                  "/",
+                  1
+              )[1]
+
+              text_el = message.select_one(
+                  ".tgme_widget_message_text"
+              )
+
+              text = ""
+
+              if text_el:
+                  text = text_el.get_text(
+                      "\n",
+                      strip=True
+                  )
+
+              print()
+              print("=" * 70)
+              print("POST:", post_id)
+              print("=" * 70)
+              print(text[:1500])
+
+              links = message.select(
+                  "a[href]"
+              )
+
+              for link in links:
+
+                  href = link.get(
+                      "href",
+                      ""
+                  )
+
+                  if any(
+                      ext in href.lower()
+                      for ext in [
+                          ".pdf",
+                          ".xls",
+                          ".xlsx",
+                          ".zip"
+                      ]
+                  ):
+
+                      print(
+                          "ATTACHMENT:",
+                          href
+                      )
+
+          print()
+          print("ATTACHMENT TEST: OK")
+
+          PY
