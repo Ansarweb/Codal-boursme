@@ -1,4 +1,4 @@
-name: Codal Direct API Test
+name: Codal Attachment Test
 
 on:
   workflow_dispatch:
@@ -8,132 +8,202 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests
 
-      - name: Find Codal report
+      - name: Test TSETMC Codal API
         run: |
           python - <<'PY'
 
           import requests
-          import urllib.parse
           import json
 
-          SYMBOL = "وفردانامه"
+          TRACING_NO = 463194
 
-          API = (
-              "https://search.codal.ir/api/search/v2/q?"
-              + urllib.parse.urlencode({
-                  "Symbol": SYMBOL,
-                  "PageNumber": 1,
-                  "Length": 20
-              })
-          )
+          BASE = "https://cdn.tsetmc.com/api"
+
+          headers = {
+              "User-Agent": (
+                  "Mozilla/5.0 "
+                  "(Windows NT 10.0; Win64; x64) "
+                  "AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) "
+                  "Chrome/126 Safari/537.36"
+              ),
+              "Accept": "application/json,text/plain,*/*",
+              "Referer": "https://www.tsetmc.com/",
+              "Origin": "https://www.tsetmc.com"
+          }
 
           print("=" * 70)
-          print("CODAL DIRECT API TEST")
+          print("TSETMC CODAL ATTACHMENT TEST")
           print("=" * 70)
 
-          print("SYMBOL:", SYMBOL)
-          print("API:", API)
+          print("TRACING NO:", TRACING_NO)
 
-          response = requests.get(
-              API,
-              headers={
-                  "User-Agent": "Mozilla/5.0",
-                  "Accept": "application/json"
-              },
-              timeout=40
+          # --------------------------------------------------
+          # 1. دریافت اطلاعات اطلاعیه
+          # --------------------------------------------------
+
+          url1 = (
+              f"{BASE}/Codal/"
+              f"GetFileAttachmentByTracingNo/"
+              f"{TRACING_NO}"
           )
 
           print()
-          print("HTTP:", response.status_code)
+          print("REQUEST 1:")
+          print(url1)
 
-          response.raise_for_status()
+          try:
 
-          data = response.json()
+              r1 = requests.get(
+                  url1,
+                  headers=headers,
+                  timeout=30
+              )
 
-          letters = data.get(
-              "Letters",
-              []
+              print(
+                  "HTTP:",
+                  r1.status_code
+              )
+
+              print(
+                  "CONTENT TYPE:",
+                  r1.headers.get(
+                      "content-type"
+                  )
+              )
+
+              print(
+                  "SIZE:",
+                  len(r1.content)
+              )
+
+              if r1.ok:
+
+                  try:
+
+                      data1 = r1.json()
+
+                      print()
+                      print("=" * 70)
+                      print("RESPONSE 1")
+                      print("=" * 70)
+
+                      print(
+                          json.dumps(
+                              data1,
+                              ensure_ascii=False,
+                              indent=2
+                          )
+                      )
+
+                  except Exception:
+
+                      print(
+                          r1.text[:5000]
+                      )
+
+              else:
+
+                  print(
+                      r1.text[:2000]
+                  )
+
+          except Exception as e:
+
+              print(
+                  "REQUEST 1 ERROR:",
+                  repr(e)
+              )
+
+          # --------------------------------------------------
+          # 2. دریافت محتوای فایل
+          # --------------------------------------------------
+
+          url2 = (
+              f"{BASE}/Codal/"
+              f"GetContentFileByTracingNo/"
+              f"{TRACING_NO}"
           )
-
-          print(
-              "RESULTS:",
-              len(letters)
-          )
-
-          print()
-
-          for letter in letters:
-
-              print("=" * 70)
-
-              print(
-                  "TRACING NO:",
-                  letter.get("TracingNo")
-              )
-
-              print(
-                  "SYMBOL:",
-                  letter.get("Symbol")
-              )
-
-              print(
-                  "TITLE:",
-                  letter.get("Title")
-              )
-
-              print(
-                  "DATE:",
-                  letter.get("SentDateTime")
-              )
-
-              print(
-                  "HAS EXCEL:",
-                  letter.get("HasExcel")
-              )
-
-              print(
-                  "HAS PDF:",
-                  letter.get("HasPdf")
-              )
-
-              print(
-                  "HAS ATTACHMENT:",
-                  letter.get("HasAttachment")
-              )
-
-              print(
-                  "LETTER SERIAL:",
-                  letter.get("LetterSerial")
-              )
-
-              print(
-                  "URL:",
-                  letter.get("Url")
-              )
-
-              print(
-                  "PDF URL:",
-                  letter.get("PdfUrl")
-              )
-
-              print(
-                  "EXCEL URL:",
-                  letter.get("ExcelUrl")
-              )
-
-              print(
-                  "ATTACHMENT URL:",
-                  letter.get("AttachmentUrl")
-              )
 
           print()
           print("=" * 70)
-          print("CODAL API TEST: OK")
+          print("REQUEST 2")
+          print("=" * 70)
+
+          print(url2)
+
+          try:
+
+              r2 = requests.get(
+                  url2,
+                  headers=headers,
+                  timeout=30
+              )
+
+              print(
+                  "HTTP:",
+                  r2.status_code
+              )
+
+              print(
+                  "CONTENT TYPE:",
+                  r2.headers.get(
+                      "content-type"
+                  )
+              )
+
+              print(
+                  "SIZE:",
+                  len(r2.content)
+              )
+
+              if r2.ok:
+
+                  try:
+
+                      data2 = r2.json()
+
+                      print()
+                      print(
+                          json.dumps(
+                              data2,
+                              ensure_ascii=False,
+                              indent=2
+                          )
+                      )
+
+                  except Exception:
+
+                      print(
+                          r2.text[:5000]
+                      )
+
+              else:
+
+                  print(
+                      r2.text[:2000]
+                  )
+
+          except Exception as e:
+
+              print(
+                  "REQUEST 2 ERROR:",
+                  repr(e)
+              )
+
+          # --------------------------------------------------
+          # پایان
+          # --------------------------------------------------
+
+          print()
+          print("=" * 70)
+          print("TSETMC TEST FINISHED")
           print("=" * 70)
 
           PY
