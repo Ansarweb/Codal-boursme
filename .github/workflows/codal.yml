@@ -1,181 +1,47 @@
 name: Codal Boursme
 
 on:
-  schedule:
-    - cron: "*/30 * * * *"
   workflow_dispatch:
 
-permissions:
-  contents: write
-
-concurrency:
-  group: codal-boursme
-  cancel-in-progress: false
-
 jobs:
-  codal:
+  telegram-test:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install requests beautifulsoup4
-
-      - name: Read new Codal posts
+      - name: Send Telegram test
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python - <<'PY'
-          import json
-          import re
+          import os
           import requests
-          from bs4 import BeautifulSoup
 
-          URL = "https://t.me/s/Codal360_ir"
-          STATE = "codal_state.json"
+          token = os.environ["TELEGRAM_BOT_TOKEN"]
+          chat_id = os.environ["TELEGRAM_CHAT_ID"]
 
-          # آخرین پست پردازش‌شده
-          try:
-              with open(STATE, "r", encoding="utf-8") as f:
-                  state = json.load(f)
-              last_id = int(state.get("last_id", 0))
-          except:
-              last_id = 0
+          url = f"https://api.telegram.org/bot{token}/sendMessage"
 
-          print("LAST PROCESSED ID:", last_id)
-
-          r = requests.get(
-              URL,
-              headers={"User-Agent": "Mozilla/5.0"},
-              timeout=30
-          )
-          r.raise_for_status()
-
-          soup = BeautifulSoup(r.text, "html.parser")
-
-          posts = []
-
-          for msg in soup.select(".tgme_widget_message"):
-              post = msg.get("data-post", "")
-
-              if "/" not in post:
-                  continue
-
-              try:
-                  post_id = int(post.rsplit("/", 1)[1])
-              except:
-                  continue
-
-              if post_id <= last_id:
-                  continue
-
-              text_el = msg.select_one(".tgme_widget_message_text")
-
-              if not text_el:
-                  continue
-
-              text = text_el.get_text("\n", strip=True)
-
-              posts.append({
-                  "id": post_id,
-                  "text": text,
-                  "url": f"https://t.me/Codal360_ir/{post_id}"
-              })
-
-          posts.sort(key=lambda x: x["id"])
-
-          patterns = {
-              "گزارش ماهانه": [
-                  r"گزارش.*فعالیت.*ماهانه",
-                  r"فعالیت.*ماهانه"
-              ],
-              "صورت مالی": [
-                  r"صورت.?ها[یي].?مالی",
-                  r"صورت.?مالی"
-              ],
-              "افزایش سرمایه": [
-                  r"افزایش.?سرمایه",
-                  r"پیشنهاد.*افزایش.?سرمایه",
-                  r"گزارش.*توجیهی.*افزایش"
-              ],
-              "افشای بااهمیت": [
-                  r"افشای.?اطلاعات.?بااهمیت",
-                  r"اطلاعات.?بااهمیت"
-              ],
-              "شفاف‌سازی": [
-                  r"شفاف.?سازی"
-              ],
-              "مجامع": [
-                  r"مجمع عمومی",
-                  r"تصمیمات مجمع",
-                  r"آگهی دعوت.*مجمع"
-              ]
+          data = {
+              "chat_id": chat_id,
+              "text": "🟢 تست Boursme\n\nاتصال ربات به کانال با موفقیت برقرار شد."
           }
 
-          def classify(text):
-              result = []
+          response = requests.post(
+              url,
+              json=data,
+              timeout=30
+          )
 
-              for category, regexes in patterns.items():
-                  for pattern in regexes:
-                      if re.search(pattern, text, re.I):
-                          result.append(category)
-                          break
+          print("HTTP STATUS:", response.status_code)
+          print("TELEGRAM RESPONSE:", response.text)
 
-              return result
+          response.raise_for_status()
 
-          important = []
+          result = response.json()
 
-          for post in posts:
-              categories = classify(post["text"])
+          if not result.get("ok"):
+              raise Exception(result)
 
-              if categories:
-                  post["categories"] = categories
-                  important.append(post)
-
-          print("=" * 60)
-          print("NEW POSTS:", len(posts))
-          print("IMPORTANT NEW POSTS:", len(important))
-          print("=" * 60)
-
-          for post in important:
-              print()
-              print("ID:", post["id"])
-              print("CATEGORY:", ", ".join(post["categories"]))
-              print("URL:", post["url"])
-              print(post["text"][:1000])
-              print("-" * 60)
-
-          # آخرین شناسه دیده‌شده
-          if posts:
-              new_last_id = max(p["id"] for p in posts)
-          else:
-              new_last_id = last_id
-
-          with open(STATE, "w", encoding="utf-8") as f:
-              json.dump(
-                  {"last_id": new_last_id},
-                  f,
-                  ensure_ascii=False,
-                  indent=2
-              )
-
-          print()
-          print("NEW LAST POST ID:", new_last_id)
-          print("STATE SAVED: OK")
+          print("TELEGRAM TEST: OK")
           PY
-
-      - name: Save state
-        run: |
-          git config user.name "Codal Boursme Bot"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add codal_state.json
-
-          if git diff --cached --quiet; then
-            echo "No state changes."
-          else
-            git commit -m "Update Codal state"
-            git push
-          fi
