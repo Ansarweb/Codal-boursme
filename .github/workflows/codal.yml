@@ -17,104 +17,66 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      # --------------------------------
-      # 1. دریافت فایل‌های قبلی
-      # --------------------------------
-
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
-
-      # --------------------------------
-      # 2. نصب Python packages
-      # --------------------------------
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
 
-      # --------------------------------
-      # 3. خواندن کدال
-      # --------------------------------
-
-      - name: Read Codal
+      - name: Read and filter Codal
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
 
         run: |
-
           python - <<'PY'
 
           import os
           import re
           import json
           import requests
-
           from bs4 import BeautifulSoup
 
 
-          # ==========================================
-          # تنظیمات
-          # ==========================================
-
           SOURCE_URL = "https://t.me/s/codal"
-
           STATE_FILE = "codal_state.json"
 
-          BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-
+          TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
           CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 
-          # ==========================================
-          # خواندن آخرین ID
-          # ==========================================
+          # =====================================
+          # State
+          # =====================================
 
           try:
-
               with open(STATE_FILE, "r", encoding="utf-8") as f:
-
                   state = json.load(f)
 
               last_id = int(state.get("last_id", 0))
 
           except Exception:
-
               last_id = 0
 
-
-          print("======================================")
-          print("BOURSME CODAL MONITOR")
-          print("======================================")
 
           print("LAST ID:", last_id)
 
 
-          # ==========================================
-          # دریافت صفحه کدال
-          # ==========================================
-
-          headers = {
-              "User-Agent":
-              "Mozilla/5.0 (Linux; Android 10) "
-              "AppleWebKit/537.36 "
-              "Chrome/120 Safari/537.36"
-          }
-
+          # =====================================
+          # Download channel
+          # =====================================
 
           response = requests.get(
               SOURCE_URL,
-              headers=headers,
+              headers={
+                  "User-Agent": "Mozilla/5.0"
+              },
               timeout=40
           )
 
-
-          print("HTTP:", response.status_code)
-
           response.raise_for_status()
-
 
           soup = BeautifulSoup(
               response.text,
@@ -122,12 +84,11 @@ jobs:
           )
 
 
-          # ==========================================
-          # استخراج پست‌ها
-          # ==========================================
+          # =====================================
+          # Extract posts
+          # =====================================
 
           posts = []
-
 
           for message in soup.select(
               ".tgme_widget_message"
@@ -138,54 +99,36 @@ jobs:
                   ""
               )
 
-
               if "/" not in data_post:
                   continue
 
-
               try:
-
                   post_id = int(
-                      data_post.rsplit(
-                          "/",
-                          1
-                      )[1]
+                      data_post.rsplit("/", 1)[1]
                   )
-
               except Exception:
-
                   continue
 
-
-              # قبلاً پردازش شده
               if post_id <= last_id:
                   continue
 
-
-              text_element = message.select_one(
+              text_el = message.select_one(
                   ".tgme_widget_message_text"
               )
 
-
-              if not text_element:
+              if not text_el:
                   continue
 
-
-              text = text_element.get_text(
+              text = text_el.get_text(
                   "\n",
                   strip=True
               )
 
-
               posts.append({
-
                   "id": post_id,
-
                   "text": text,
-
                   "url":
                   f"https://t.me/codal/{post_id}"
-
               })
 
 
@@ -194,407 +137,145 @@ jobs:
           )
 
 
-          print(
-              "NEW POSTS:",
-              len(posts)
-          )
+          print("NEW POSTS:", len(posts))
 
 
-          # ==========================================
-          # تشخیص نماد
-          # ==========================================
+          # =====================================
+          # Symbol
+          # =====================================
 
-          def get_symbol(text):
+          def symbol(text):
 
-              match = re.search(
+              m = re.search(
                   r"#([آ-یA-Za-z0-9_]+)",
                   text
               )
 
-              if match:
-
-                  return match.group(1)
+              if m:
+                  return m.group(1)
 
               return "نامشخص"
 
 
-          # ==========================================
-          # تشخیص نوع اطلاعیه
-          # ==========================================
+          # =====================================
+          # Classification
+          # =====================================
 
           def classify(text):
 
-              categories = []
+              t = text.replace(
+                  "‌",
+                  ""
+              ).lower()
 
 
+              # -----------------------------
+              # مواردی که فعلاً حذف می‌شوند
+              # -----------------------------
+
+              ignore_patterns = [
+
+                  r"توضیحات?\s+در\s+خصوص",
+
+                  r"توضيحات?\s+در\s+خصوص",
+
+                  r"اصلاحیه.*توضیحات",
+
+                  r"تمدید.*مهلت",
+
+                  r"رفع.*ابهام"
+
+              ]
+
+
+              for pattern in ignore_patterns:
+
+                  if re.search(
+                      pattern,
+                      t,
+                      re.I
+                  ):
+
+                      return []
+
+
+              result = []
+
+
+              # -----------------------------
               # گزارش ماهانه
+              # -----------------------------
 
               if re.search(
                   r"گزارش\s+فعالیت\s+ماهانه",
-                  text,
+                  t,
                   re.I
               ):
 
-                  categories.append(
+                  result.append(
                       "گزارش ماهانه"
                   )
 
 
-              # صورت مالی
+              # -----------------------------
+              # صورت‌های مالی
+              # -----------------------------
 
-              if re.search(
-                  r"صورت.?ها[یي].?مالی|اطلاعات و صورت.?ها",
-                  text,
+              financial = re.search(
+
+                  r"صورت.?ها[یي].?مالی|"
+                  r"اطلاعات\s+و\s+صورت",
+
+                  t,
+
                   re.I
-              ):
 
-                  categories.append(
+              )
+
+
+              if financial:
+
+                  result.append(
                       "صورت مالی"
                   )
 
 
-              # دوره های مالی
+              # -----------------------------
+              # دوره مالی
+              # -----------------------------
 
               if re.search(
-                  r"دوره\s+۳\s+ماهه|دوره\s+3\s+ماهه",
-                  text,
+                  r"۳\s*ماهه|3\s*ماهه",
+                  t,
                   re.I
               ):
 
-                  categories.append(
+                  result.append(
                       "۳ ماهه"
                   )
 
 
               if re.search(
-                  r"دوره\s+۶\s+ماهه|دوره\s+6\s+ماهه",
-                  text,
+                  r"۶\s*ماهه|6\s*ماهه",
+                  t,
                   re.I
               ):
 
-                  categories.append(
+                  result.append(
                       "۶ ماهه"
                   )
 
 
               if re.search(
-                  r"دوره\s+۹\s+ماهه|دوره\s+9\s+ماهه",
-                  text,
+                  r"۹\s*ماهه|9\s*ماهه",
+                  t,
                   re.I
               ):
 
-                  categories.append(
+                  result.append(
                       "۹ ماهه"
                   )
 
 
               if re.search(
-                  r"سال\s+مالی|دوره\s+۱۲\s+ماهه|دوره\s+12\s+ماهه",
-                  text,
-                  re.I
-              ):
-
-                  categories.append(
-                      "۱۲ ماهه"
-                  )
-
-
-              # افزایش سرمایه
-
-              if re.search(
-                  r"افزایش\s+سرمایه",
-                  text,
-                  re.I
-              ):
-
-                  categories.append(
-                      "افزایش سرمایه"
-                  )
-
-
-              # افشای بااهمیت
-
-              if re.search(
-                  r"افشای\s+اطلاعات\s+بااهمیت",
-                  text,
-                  re.I
-              ):
-
-                  categories.append(
-                      "افشای بااهمیت"
-                  )
-
-
-              # شفاف سازی
-
-              if re.search(
-                  r"شفاف.?سازی",
-                  text,
-                  re.I
-              ):
-
-                  categories.append(
-                      "شفاف سازی"
-                  )
-
-
-              # مجامع
-
-              if re.search(
-                  r"مجمع عمومی|تصمیمات مجمع|آگهی.*مجمع",
-                  text,
-                  re.I
-              ):
-
-                  categories.append(
-                      "مجمع"
-                  )
-
-
-              return categories
-
-
-          # ==========================================
-          # مواردی که باید ارسال شوند
-          # ==========================================
-
-          important = []
-
-
-          for post in posts:
-
-              categories = classify(
-                  post["text"]
-              )
-
-
-              if not categories:
-                  continue
-
-
-              post["symbol"] = get_symbol(
-                  post["text"]
-              )
-
-
-              post["categories"] = categories
-
-
-              important.append(post)
-
-
-          print(
-              "IMPORTANT:",
-              len(important)
-          )
-
-
-          # ==========================================
-          # ساخت پیام اختصاصی Boursme
-          # ==========================================
-
-          def build_message(post):
-
-              symbol = post["symbol"]
-
-              categories = " | ".join(
-                  post["categories"]
-              )
-
-
-              original_text = post["text"].strip()
-
-
-              # حذف بخش‌های تبلیغاتی
-              original_text = re.sub(
-                  r"افزودن نماد.*$",
-                  "",
-                  original_text,
-                  flags=re.S
-              )
-
-
-              message = (
-
-                  f"📌 <b>{symbol}</b>\n"
-
-                  f"📊 <b>{categories}</b>\n\n"
-
-                  f"{original_text}\n\n"
-
-                  f"🔗 "
-                  f'<a href="{post["url"]}">'
-                  f"مشاهده اطلاعیه"
-                  f"</a>\n\n"
-
-                  f"🟢 <b>Boursme</b>"
-              )
-
-
-              return message
-
-
-          # ==========================================
-          # ارسال به Telegram
-          # ==========================================
-
-          TELEGRAM_URL = (
-              f"https://api.telegram.org/"
-              f"bot{BOT_TOKEN}/sendMessage"
-          )
-
-
-          def send_telegram(message):
-
-              response = requests.post(
-
-                  TELEGRAM_URL,
-
-                  json={
-
-                      "chat_id":
-                      CHAT_ID,
-
-                      "text":
-                      message,
-
-                      "parse_mode":
-                      "HTML",
-
-                      "disable_web_page_preview":
-                      True
-
-                  },
-
-                  timeout=30
-
-              )
-
-
-              print(
-                  "TELEGRAM:",
-                  response.status_code
-              )
-
-
-              if not response.ok:
-
-                  print(
-                      response.text
-                  )
-
-                  response.raise_for_status()
-
-
-          # ==========================================
-          # ارسال
-          # ==========================================
-
-          for post in important:
-
-              print(
-                  "SENDING:",
-                  post["id"],
-                  post["symbol"]
-              )
-
-
-              message = build_message(
-                  post
-              )
-
-
-              send_telegram(
-                  message
-              )
-
-
-          # ==========================================
-          # ذخیره آخرین ID
-          # ==========================================
-
-          if posts:
-
-              new_last_id = max(
-                  p["id"]
-                  for p in posts
-              )
-
-          else:
-
-              new_last_id = last_id
-
-
-          with open(
-              STATE_FILE,
-              "w",
-              encoding="utf-8"
-          ) as f:
-
-              json.dump(
-
-                  {
-                      "last_id":
-                      new_last_id
-                  },
-
-                  f,
-
-                  ensure_ascii=False,
-
-                  indent=2
-
-              )
-
-
-          print(
-              "NEW LAST ID:",
-              new_last_id
-          )
-
-
-          print(
-              "======================================"
-          )
-
-          print(
-              "CODAL MONITOR FINISHED"
-          )
-
-          print(
-              "======================================"
-
-
-          )
-
-          PY
-
-
-      # --------------------------------
-      # 4. ذخیره وضعیت
-      # --------------------------------
-
-      - name: Save state
-
-        run: |
-
-          git config user.name \
-            "Boursme Codal Bot"
-
-          git config user.email \
-            "41898282+github-actions[bot]@users.noreply.github.com"
-
-          git add codal_state.json
-
-          if git diff --cached --quiet; then
-
-            echo "No state changes."
-
-          else
-
-            git commit \
-              -m "Update Codal state"
-
-            git push
-
-          fi
+                  r"۱۲\s*ماهه|12\s*ماهه|سال\s
