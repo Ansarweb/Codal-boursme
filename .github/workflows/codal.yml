@@ -25,20 +25,17 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
 
-      - name: Read and filter Codal
+      - name: Read Codal
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-
         run: |
           python - <<'PY'
-
           import os
           import re
           import json
           import requests
           from bs4 import BeautifulSoup
-
 
           SOURCE_URL = "https://t.me/s/codal"
           STATE_FILE = "codal_state.json"
@@ -46,35 +43,30 @@ jobs:
           TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
           CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-
-          # =====================================
+          # -----------------------------
           # State
-          # =====================================
+          # -----------------------------
 
           try:
               with open(STATE_FILE, "r", encoding="utf-8") as f:
                   state = json.load(f)
-
               last_id = int(state.get("last_id", 0))
-
           except Exception:
               last_id = 0
 
-
           print("LAST ID:", last_id)
 
-
-          # =====================================
-          # Download channel
-          # =====================================
+          # -----------------------------
+          # Download Codal channel
+          # -----------------------------
 
           response = requests.get(
               SOURCE_URL,
-              headers={
-                  "User-Agent": "Mozilla/5.0"
-              },
+              headers={"User-Agent": "Mozilla/5.0"},
               timeout=40
           )
+
+          print("HTTP:", response.status_code)
 
           response.raise_for_status()
 
@@ -83,21 +75,15 @@ jobs:
               "html.parser"
           )
 
-
-          # =====================================
+          # -----------------------------
           # Extract posts
-          # =====================================
+          # -----------------------------
 
           posts = []
 
-          for message in soup.select(
-              ".tgme_widget_message"
-          ):
+          for message in soup.select(".tgme_widget_message"):
 
-              data_post = message.get(
-                  "data-post",
-                  ""
-              )
+              data_post = message.get("data-post", "")
 
               if "/" not in data_post:
                   continue
@@ -112,14 +98,14 @@ jobs:
               if post_id <= last_id:
                   continue
 
-              text_el = message.select_one(
+              text_element = message.select_one(
                   ".tgme_widget_message_text"
               )
 
-              if not text_el:
+              if not text_element:
                   continue
 
-              text = text_el.get_text(
+              text = text_element.get_text(
                   "\n",
                   strip=True
               )
@@ -127,155 +113,268 @@ jobs:
               posts.append({
                   "id": post_id,
                   "text": text,
-                  "url":
-                  f"https://t.me/codal/{post_id}"
+                  "url": f"https://t.me/codal/{post_id}"
               })
 
-
-          posts.sort(
-              key=lambda x: x["id"]
-          )
-
+          posts.sort(key=lambda x: x["id"])
 
           print("NEW POSTS:", len(posts))
 
-
-          # =====================================
+          # -----------------------------
           # Symbol
-          # =====================================
+          # -----------------------------
 
-          def symbol(text):
+          def get_symbol(text):
 
-              m = re.search(
-                  r"#([آ-یA-Za-z0-9_]+)",
+              match = re.search(
+                  r"#([A-Za-z0-9آ-ی_]+)",
                   text
               )
 
-              if m:
-                  return m.group(1)
+              if match:
+                  return match.group(1)
 
               return "نامشخص"
 
-
-          # =====================================
+          # -----------------------------
           # Classification
-          # =====================================
+          # -----------------------------
 
           def classify(text):
 
-              t = text.replace(
-                  "‌",
-                  ""
-              ).lower()
+              t = text.replace("‌", " ").strip()
 
+              # اطلاعیه‌های کم‌اهمیت که فعلاً حذف می‌شوند
 
-              # -----------------------------
-              # مواردی که فعلاً حذف می‌شوند
-              # -----------------------------
-
-              ignore_patterns = [
-
-                  r"توضیحات?\s+در\s+خصوص",
-
-                  r"توضيحات?\s+در\s+خصوص",
-
-                  r"اصلاحیه.*توضیحات",
-
-                  r"تمدید.*مهلت",
-
-                  r"رفع.*ابهام"
-
+              ignore_words = [
+                  "توضیحات در خصوص اطلاعات و صورت های مالی",
+                  "توضيحات در خصوص اطلاعات و صورت هاي مالي",
+                  "رفع ابهام",
+                  "تمدید مهلت"
               ]
 
-
-              for pattern in ignore_patterns:
-
-                  if re.search(
-                      pattern,
-                      t,
-                      re.I
-                  ):
-
+              for word in ignore_words:
+                  if word in t:
                       return []
-
 
               result = []
 
-
-              # -----------------------------
               # گزارش ماهانه
-              # -----------------------------
 
-              if re.search(
-                  r"گزارش\s+فعالیت\s+ماهانه",
-                  t,
-                  re.I
+              if (
+                  "گزارش فعالیت ماهانه" in t
+                  or "گزارش فعالیت ماهانه" in t.replace("‌", " ")
               ):
+                  result.append("گزارش ماهانه")
 
-                  result.append(
-                      "گزارش ماهانه"
-                  )
+              # صورت مالی
 
+              if (
+                  "صورت های مالی" in t
+                  or "صورت‌های مالی" in t
+                  or "صورت هاي مالي" in t
+                  or "اطلاعات و صورت های مالی" in t
+                  or "اطلاعات و صورت هاي مالي" in t
+              ):
+                  result.append("صورت مالی")
 
-              # -----------------------------
-              # صورت‌های مالی
-              # -----------------------------
+              # دوره های مالی
 
-              financial = re.search(
+              if (
+                  "3 ماهه" in t
+                  or "۳ ماهه" in t
+                  or "سه ماهه" in t
+              ):
+                  result.append("۳ ماهه")
 
-                  r"صورت.?ها[یي].?مالی|"
-                  r"اطلاعات\s+و\s+صورت",
+              if (
+                  "6 ماهه" in t
+                  or "۶ ماهه" in t
+                  or "شش ماهه" in t
+              ):
+                  result.append("۶ ماهه")
 
-                  t,
+              if (
+                  "9 ماهه" in t
+                  or "۹ ماهه" in t
+                  or "نه ماهه" in t
+              ):
+                  result.append("۹ ماهه")
 
-                  re.I
+              if (
+                  "12 ماهه" in t
+                  or "۱۲ ماهه" in t
+                  or "دوازده ماهه" in t
+                  or "سال مالی" in t
+              ):
+                  result.append("۱۲ ماهه")
 
+              # افزایش سرمایه
+
+              if "افزایش سرمایه" in t:
+                  result.append("افزایش سرمایه")
+
+              # افشای بااهمیت
+
+              if (
+                  "افشای اطلاعات بااهمیت" in t
+                  or "افشای اطلاعات با اهمیت" in t
+              ):
+                  result.append("افشای بااهمیت")
+
+              # تغییر نرخ
+
+              if (
+                  "تغییر نرخ" in t
+                  or "افزایش نرخ" in t
+                  or "کاهش نرخ" in t
+              ):
+                  result.append("تغییر نرخ")
+
+              # قرارداد
+
+              if (
+                  "قرارداد بااهمیت" in t
+                  or "قرارداد با اهمیت" in t
+              ):
+                  result.append("قرارداد بااهمیت")
+
+              # مجامع
+
+              if (
+                  "مجمع عمومی" in t
+                  or "تصمیمات مجمع" in t
+                  or "آگهی دعوت" in t
+              ):
+                  result.append("مجمع")
+
+              # حذف موارد تکراری
+
+              return list(dict.fromkeys(result))
+
+          # -----------------------------
+          # Telegram
+          # -----------------------------
+
+          TELEGRAM_URL = (
+              f"https://api.telegram.org/"
+              f"bot{TOKEN}/sendMessage"
+          )
+
+          def send_telegram(message):
+
+              response = requests.post(
+                  TELEGRAM_URL,
+                  json={
+                      "chat_id": CHAT_ID,
+                      "text": message,
+                      "parse_mode": "HTML",
+                      "disable_web_page_preview": True
+                  },
+                  timeout=30
               )
 
+              print(
+                  "TELEGRAM STATUS:",
+                  response.status_code
+              )
 
-              if financial:
+              response.raise_for_status()
 
-                  result.append(
-                      "صورت مالی"
-                  )
+          # -----------------------------
+          # Filter
+          # -----------------------------
 
+          important = []
 
-              # -----------------------------
-              # دوره مالی
-              # -----------------------------
+          for post in posts:
 
-              if re.search(
-                  r"۳\s*ماهه|3\s*ماهه",
-                  t,
-                  re.I
-              ):
+              categories = classify(post["text"])
 
-                  result.append(
-                      "۳ ماهه"
-                  )
+              if not categories:
+                  continue
 
+              post["symbol"] = get_symbol(
+                  post["text"]
+              )
 
-              if re.search(
-                  r"۶\s*ماهه|6\s*ماهه",
-                  t,
-                  re.I
-              ):
+              post["categories"] = categories
 
-                  result.append(
-                      "۶ ماهه"
-                  )
+              important.append(post)
 
+          print(
+              "IMPORTANT:",
+              len(important)
+          )
 
-              if re.search(
-                  r"۹\s*ماهه|9\s*ماهه",
-                  t,
-                  re.I
-              ):
+          # -----------------------------
+          # Send
+          # -----------------------------
 
-                  result.append(
-                      "۹ ماهه"
-                  )
+          for post in important:
 
+              category = " | ".join(
+                  post["categories"]
+              )
 
-              if re.search(
-                  r"۱۲\s*ماهه|12\s*ماهه|سال\s
+              message = (
+                  f"📌 <b>{post['symbol']}</b>\n"
+                  f"📊 <b>{category}</b>\n\n"
+                  f"📝 اطلاعیه جدید کدال\n\n"
+                  f"🔗 <a href=\"{post['url']}\">"
+                  f"مشاهده اطلاعیه"
+                  f"</a>\n\n"
+                  f"🟢 <b>Boursme</b>"
+              )
+
+              send_telegram(message)
+
+              print(
+                  "SENT:",
+                  post["id"],
+                  post["symbol"]
+              )
+
+          # -----------------------------
+          # Save state
+          # -----------------------------
+
+          if posts:
+              new_last_id = max(
+                  post["id"] for post in posts
+              )
+          else:
+              new_last_id = last_id
+
+          with open(
+              STATE_FILE,
+              "w",
+              encoding="utf-8"
+          ) as f:
+              json.dump(
+                  {
+                      "last_id": new_last_id
+                  },
+                  f,
+                  ensure_ascii=False,
+                  indent=2
+              )
+
+          print("NEW LAST ID:", new_last_id)
+          print("FILTER V2: OK")
+
+          PY
+
+      - name: Save state
+        run: |
+          git config user.name "Boursme Codal Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add codal_state.json
+
+          if git diff --cached --quiet; then
+            echo "No state changes."
+          else
+            git commit -m "Update Codal state"
+            git push
+          fi
