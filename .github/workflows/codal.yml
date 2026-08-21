@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: codal-boursme
+  cancel-in-progress: false
+
 jobs:
   codal:
     runs-on: ubuntu-latest
@@ -21,23 +25,32 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests beautifulsoup4
 
-      - name: Read and filter Codal360
+      - name: Read new Codal posts
         run: |
           python - <<'PY'
-          import os
-          import re
           import json
+          import re
           import requests
           from bs4 import BeautifulSoup
 
           URL = "https://t.me/s/Codal360_ir"
           STATE = "codal_state.json"
 
-          headers = {
-              "User-Agent": "Mozilla/5.0"
-          }
+          # آخرین پست پردازش‌شده
+          try:
+              with open(STATE, "r", encoding="utf-8") as f:
+                  state = json.load(f)
+              last_id = int(state.get("last_id", 0))
+          except:
+              last_id = 0
 
-          r = requests.get(URL, headers=headers, timeout=30)
+          print("LAST PROCESSED ID:", last_id)
+
+          r = requests.get(
+              URL,
+              headers={"User-Agent": "Mozilla/5.0"},
+              timeout=30
+          )
           r.raise_for_status()
 
           soup = BeautifulSoup(r.text, "html.parser")
@@ -55,6 +68,9 @@ jobs:
               except:
                   continue
 
+              if post_id <= last_id:
+                  continue
+
               text_el = msg.select_one(".tgme_widget_message_text")
 
               if not text_el:
@@ -70,33 +86,27 @@ jobs:
 
           posts.sort(key=lambda x: x["id"])
 
-          # دسته‌بندی‌های موردنظر
           patterns = {
               "گزارش ماهانه": [
                   r"گزارش.*فعالیت.*ماهانه",
                   r"فعالیت.*ماهانه"
               ],
-
               "صورت مالی": [
                   r"صورت.?ها[یي].?مالی",
                   r"صورت.?مالی"
               ],
-
               "افزایش سرمایه": [
                   r"افزایش.?سرمایه",
                   r"پیشنهاد.*افزایش.?سرمایه",
                   r"گزارش.*توجیهی.*افزایش"
               ],
-
               "افشای بااهمیت": [
                   r"افشای.?اطلاعات.?بااهمیت",
                   r"اطلاعات.?بااهمیت"
               ],
-
               "شفاف‌سازی": [
                   r"شفاف.?سازی"
               ],
-
               "مجامع": [
                   r"مجمع عمومی",
                   r"تصمیمات مجمع",
@@ -117,40 +127,55 @@ jobs:
 
           important = []
 
-          for p in posts:
-              categories = classify(p["text"])
+          for post in posts:
+              categories = classify(post["text"])
 
               if categories:
-                  p["categories"] = categories
-                  important.append(p)
+                  post["categories"] = categories
+                  important.append(post)
 
-          # نمایش آخرین موارد برای تست
-          print("=" * 70)
-          print("TOTAL POSTS:", len(posts))
-          print("IMPORTANT POSTS:", len(important))
-          print("=" * 70)
+          print("=" * 60)
+          print("NEW POSTS:", len(posts))
+          print("IMPORTANT NEW POSTS:", len(important))
+          print("=" * 60)
 
-          for p in important[-15:]:
+          for post in important:
               print()
-              print("ID:", p["id"])
-              print("CATEGORY:", ", ".join(p["categories"]))
-              print("URL:", p["url"])
-              print("TEXT:")
-              print(p["text"][:1500])
-              print("-" * 70)
+              print("ID:", post["id"])
+              print("CATEGORY:", ", ".join(post["categories"]))
+              print("URL:", post["url"])
+              print(post["text"][:1000])
+              print("-" * 60)
 
-          # ذخیره آخرین شناسه
-          last_id = posts[-1]["id"] if posts else 0
+          # آخرین شناسه دیده‌شده
+          if posts:
+              new_last_id = max(p["id"] for p in posts)
+          else:
+              new_last_id = last_id
 
           with open(STATE, "w", encoding="utf-8") as f:
               json.dump(
-                  {"last_id": last_id},
+                  {"last_id": new_last_id},
                   f,
                   ensure_ascii=False,
                   indent=2
               )
 
           print()
-          print("LAST POST ID:", last_id)
-          print("FILTER TEST: OK")
+          print("NEW LAST POST ID:", new_last_id)
+          print("STATE SAVED: OK")
           PY
+
+      - name: Save state
+        run: |
+          git config user.name "Codal Boursme Bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add codal_state.json
+
+          if git diff --cached --quiet; then
+            echo "No state changes."
+          else
+            git commit -m "Update Codal state"
+            git push
+          fi
