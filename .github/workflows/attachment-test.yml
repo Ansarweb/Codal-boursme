@@ -8,100 +8,265 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install
+
+      - name: Install dependencies
         run: |
+          python -m pip install --upgrade pip
           pip install requests beautifulsoup4
 
-      - name: Test Codal Attachments
+      - name: Inspect Codal post
         run: |
           python - <<'PY'
 
           import requests
           from bs4 import BeautifulSoup
 
-          url = "https://t.me/s/codal"
+          # ==========================================
+          # پست واقعی کدال برای تست
+          # ==========================================
 
-          r = requests.get(
-              url,
-              headers={
-                  "User-Agent": "Mozilla/5.0"
-              },
-              timeout=40
+          POST_ID = 463194
+
+          POST_URL = f"https://t.me/codal/{POST_ID}"
+
+          print("=" * 70)
+          print("CODAL ATTACHMENT TEST")
+          print("=" * 70)
+
+          print("POST ID:", POST_ID)
+          print("POST URL:", POST_URL)
+
+          # ==========================================
+          # دریافت صفحه
+          # ==========================================
+
+          headers = {
+              "User-Agent": (
+                  "Mozilla/5.0 "
+                  "(Linux; Android 10) "
+                  "AppleWebKit/537.36 "
+                  "(KHTML, like Gecko) "
+                  "Chrome/120 Safari/537.36"
+              )
+          }
+
+          response = requests.get(
+              POST_URL,
+              headers=headers,
+              timeout=40,
+              allow_redirects=True
           )
 
-          r.raise_for_status()
+          print()
+          print("HTTP STATUS:", response.status_code)
+          print("FINAL URL:", response.url)
+
+          response.raise_for_status()
+
+          # ==========================================
+          # Parse HTML
+          # ==========================================
 
           soup = BeautifulSoup(
-              r.text,
+              response.text,
               "html.parser"
           )
 
-          messages = soup.select(
-              ".tgme_widget_message"
+          # ==========================================
+          # متن پست
+          # ==========================================
+
+          text_element = soup.select_one(
+              ".tgme_widget_message_text"
           )
 
-          print("POSTS:", len(messages))
+          print()
+          print("=" * 70)
+          print("POST TEXT")
+          print("=" * 70)
 
-          for message in messages[-10:]:
+          if text_element:
 
-              data_post = message.get(
-                  "data-post",
-                  ""
-              )
-
-              if "/" not in data_post:
-                  continue
-
-              post_id = data_post.rsplit(
-                  "/",
-                  1
-              )[1]
-
-              text_el = message.select_one(
-                  ".tgme_widget_message_text"
-              )
-
-              text = ""
-
-              if text_el:
-                  text = text_el.get_text(
+              print(
+                  text_element.get_text(
                       "\n",
                       strip=True
                   )
-
-              print()
-              print("=" * 70)
-              print("POST:", post_id)
-              print("=" * 70)
-              print(text[:1500])
-
-              links = message.select(
-                  "a[href]"
               )
 
-              for link in links:
+          else:
 
-                  href = link.get(
-                      "href",
-                      ""
-                  )
+              print(
+                  "POST TEXT NOT FOUND"
+              )
 
-                  if any(
-                      ext in href.lower()
-                      for ext in [
-                          ".pdf",
-                          ".xls",
-                          ".xlsx",
-                          ".zip"
-                      ]
-                  ):
+          # ==========================================
+          # تمام لینک‌ها
+          # ==========================================
 
-                      print(
-                          "ATTACHMENT:",
+          print()
+          print("=" * 70)
+          print("ALL LINKS")
+          print("=" * 70)
+
+          links = soup.select(
+              "a[href]"
+          )
+
+          print(
+              "TOTAL LINKS:",
+              len(links)
+          )
+
+          for index, link in enumerate(
+              links,
+              start=1
+          ):
+
+              href = link.get(
+                  "href",
+                  ""
+              )
+
+              text = link.get_text(
+                  " ",
+                  strip=True
+              )
+
+              print()
+              print(
+                  f"[{index}]"
+              )
+
+              print(
+                  "TEXT:",
+                  repr(text)
+              )
+
+              print(
+                  "HREF:",
+                  href
+              )
+
+          # ==========================================
+          # جستجوی لینک‌های احتمالی فایل
+          # ==========================================
+
+          print()
+          print("=" * 70)
+          print("POSSIBLE ATTACHMENT LINKS")
+          print("=" * 70)
+
+          found = []
+
+          for link in links:
+
+              href = link.get(
+                  "href",
+                  ""
+              )
+
+              href_lower = href.lower()
+
+              if any(
+                  item in href_lower
+                  for item in [
+                      ".pdf",
+                      ".xls",
+                      ".xlsx",
+                      ".zip",
+                      "attachment",
+                      "download",
+                      "codal"
+                  ]
+              ):
+
+                  if href not in found:
+
+                      found.append(
                           href
                       )
 
+          if found:
+
+              for item in found:
+
+                  print(
+                      "POSSIBLE FILE:",
+                      item
+                  )
+
+          else:
+
+              print(
+                  "NO DIRECT ATTACHMENT LINK FOUND"
+              )
+
+          # ==========================================
+          # بررسی عناصر iframe
+          # ==========================================
+
           print()
-          print("ATTACHMENT TEST: OK")
+          print("=" * 70)
+          print("IFRAMES")
+          print("=" * 70)
+
+          iframes = soup.select(
+              "iframe"
+          )
+
+          print(
+              "IFRAMES:",
+              len(iframes)
+          )
+
+          for iframe in iframes:
+
+              print(
+                  iframe.get(
+                      "src",
+                      ""
+                  )
+              )
+
+          # ==========================================
+          # بررسی تصاویر
+          # ==========================================
+
+          print()
+          print("=" * 70)
+          print("IMAGES")
+          print("=" * 70)
+
+          images = soup.select(
+              "img[src]"
+          )
+
+          print(
+              "IMAGES:",
+              len(images)
+          )
+
+          for image in images:
+
+              src = image.get(
+                  "src",
+                  ""
+              )
+
+              if src:
+
+                  print(
+                      src
+                  )
+
+          # ==========================================
+          # پایان
+          # ==========================================
+
+          print()
+          print("=" * 70)
+          print("ATTACHMENT INSPECTION: OK")
+          print("=" * 70)
 
           PY
