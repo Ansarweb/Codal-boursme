@@ -8,202 +8,50 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-
-      - name: Install dependencies
+      - name: Test TSETMC connectivity
         run: |
-          python -m pip install --upgrade pip
-          pip install requests
+          echo "=========================================="
+          echo "TEST 1: DNS"
+          echo "=========================================="
 
-      - name: Test TSETMC Codal API
-        run: |
-          python - <<'PY'
+          getent hosts tsetmc.com || true
+          getent hosts cdn.tsetmc.com || true
 
-          import requests
-          import json
+          echo
+          echo "=========================================="
+          echo "TEST 2: tsetmc.com"
+          echo "=========================================="
 
-          TRACING_NO = 463194
+          curl -I -L \
+            --connect-timeout 15 \
+            --max-time 30 \
+            https://www.tsetmc.com/ \
+            || true
 
-          BASE = "https://cdn.tsetmc.com/api"
+          echo
+          echo "=========================================="
+          echo "TEST 3: cdn.tsetmc.com"
+          echo "=========================================="
 
-          headers = {
-              "User-Agent": (
-                  "Mozilla/5.0 "
-                  "(Windows NT 10.0; Win64; x64) "
-                  "AppleWebKit/537.36 "
-                  "(KHTML, like Gecko) "
-                  "Chrome/126 Safari/537.36"
-              ),
-              "Accept": "application/json,text/plain,*/*",
-              "Referer": "https://www.tsetmc.com/",
-              "Origin": "https://www.tsetmc.com"
-          }
+          curl -I -L \
+            --connect-timeout 15 \
+            --max-time 30 \
+            https://cdn.tsetmc.com/ \
+            || true
 
-          print("=" * 70)
-          print("TSETMC CODAL ATTACHMENT TEST")
-          print("=" * 70)
+          echo
+          echo "=========================================="
+          echo "TEST 4: TSETMC API"
+          echo "=========================================="
 
-          print("TRACING NO:", TRACING_NO)
+          curl -v \
+            --connect-timeout 15 \
+            --max-time 30 \
+            -H "User-Agent: Mozilla/5.0" \
+            "https://cdn.tsetmc.com/api/Codal/GetFileAttachmentByTracingNo/463194" \
+            || true
 
-          # --------------------------------------------------
-          # 1. دریافت اطلاعات اطلاعیه
-          # --------------------------------------------------
-
-          url1 = (
-              f"{BASE}/Codal/"
-              f"GetFileAttachmentByTracingNo/"
-              f"{TRACING_NO}"
-          )
-
-          print()
-          print("REQUEST 1:")
-          print(url1)
-
-          try:
-
-              r1 = requests.get(
-                  url1,
-                  headers=headers,
-                  timeout=30
-              )
-
-              print(
-                  "HTTP:",
-                  r1.status_code
-              )
-
-              print(
-                  "CONTENT TYPE:",
-                  r1.headers.get(
-                      "content-type"
-                  )
-              )
-
-              print(
-                  "SIZE:",
-                  len(r1.content)
-              )
-
-              if r1.ok:
-
-                  try:
-
-                      data1 = r1.json()
-
-                      print()
-                      print("=" * 70)
-                      print("RESPONSE 1")
-                      print("=" * 70)
-
-                      print(
-                          json.dumps(
-                              data1,
-                              ensure_ascii=False,
-                              indent=2
-                          )
-                      )
-
-                  except Exception:
-
-                      print(
-                          r1.text[:5000]
-                      )
-
-              else:
-
-                  print(
-                      r1.text[:2000]
-                  )
-
-          except Exception as e:
-
-              print(
-                  "REQUEST 1 ERROR:",
-                  repr(e)
-              )
-
-          # --------------------------------------------------
-          # 2. دریافت محتوای فایل
-          # --------------------------------------------------
-
-          url2 = (
-              f"{BASE}/Codal/"
-              f"GetContentFileByTracingNo/"
-              f"{TRACING_NO}"
-          )
-
-          print()
-          print("=" * 70)
-          print("REQUEST 2")
-          print("=" * 70)
-
-          print(url2)
-
-          try:
-
-              r2 = requests.get(
-                  url2,
-                  headers=headers,
-                  timeout=30
-              )
-
-              print(
-                  "HTTP:",
-                  r2.status_code
-              )
-
-              print(
-                  "CONTENT TYPE:",
-                  r2.headers.get(
-                      "content-type"
-                  )
-              )
-
-              print(
-                  "SIZE:",
-                  len(r2.content)
-              )
-
-              if r2.ok:
-
-                  try:
-
-                      data2 = r2.json()
-
-                      print()
-                      print(
-                          json.dumps(
-                              data2,
-                              ensure_ascii=False,
-                              indent=2
-                          )
-                      )
-
-                  except Exception:
-
-                      print(
-                          r2.text[:5000]
-                      )
-
-              else:
-
-                  print(
-                      r2.text[:2000]
-                  )
-
-          except Exception as e:
-
-              print(
-                  "REQUEST 2 ERROR:",
-                  repr(e)
-              )
-
-          # --------------------------------------------------
-          # پایان
-          # --------------------------------------------------
-
-          print()
-          print("=" * 70)
-          print("TSETMC TEST FINISHED")
-          print("=" * 70)
-
-          PY
+          echo
+          echo "=========================================="
+          echo "TEST FINISHED"
+          echo "=========================================="
